@@ -1,0 +1,429 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Arix Signature Christmas</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;700&family=Playfair+Display:ital,wght@0,400;0,700;1,400&family=Inter:wght@300;400;600&display=swap" rel="stylesheet">
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background-color: #021a12;
+            font-family: 'Inter', sans-serif;
+        }
+        .font-luxury { font-family: 'Cinzel', serif; }
+        .font-serif-luxury { font-family: 'Playfair+Display', serif; }
+        
+        /* Custom scrollbar for glassmorphism */
+        ::-webkit-scrollbar { width: 4px; }
+        ::-webkit-scrollbar-track { background: rgba(0,0,0,0.1); }
+        ::-webkit-scrollbar-thumb { background: #d4af37; border-radius: 10px; }
+
+        #root { width: 100vw; height: 100vh; }
+    </style>
+<script type="importmap">
+{
+  "imports": {
+    "react/": "https://esm.sh/react@^19.2.3/",
+    "react": "https://esm.sh/react@^19.2.3",
+    "react-dom": "https://esm.sh/react-dom@^19.2.3",
+    "react-dom/client": "https://esm.sh/react-dom@^19.2.3/client",
+    "three": "https://esm.sh/three@^0.182.0",
+    "@react-three/fiber": "https://esm.sh/@react-three/fiber@^9.4.2",
+    "@react-three/drei": "https://esm.sh/@react-three/drei@^10.7.7",
+    "@react-three/postprocessing": "https://esm.sh/@react-three/postprocessing@^3.0.4",
+    "@google/genai": "https://esm.sh/@google/genai@^1.34.0",
+    "react-dom/": "https://esm.sh/react-dom@^19.2.3/"
+  }
+}
+</script>
+<link rel="stylesheet" href="/index.css">
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="module">
+        import React, { useState, useCallback, useRef, useMemo, Suspense } from 'react';
+        import ReactDOM from 'react-dom/client';
+        import * as THREE from 'three';
+        import { Canvas, useFrame } from '@react-three/fiber';
+        import { 
+          OrbitControls, 
+          Environment, 
+          PerspectiveCamera, 
+          ContactShadows, 
+          Sparkles, 
+          Float 
+        } from '@react-three/drei';
+        import { 
+          EffectComposer, 
+          Bloom, 
+          Noise, 
+          Vignette 
+        } from '@react-three/postprocessing';
+        import { GoogleGenAI } from "@google/genai";
+
+        // --- CONSTANTS & TYPES ---
+        const COLORS = {
+          emerald: '#065F46',
+          gold: '#D4AF37',
+          deepEmerald: '#021a12',
+          highlightGold: '#FFD700',
+        };
+
+        const AI_PROMPTS = {
+          SYSTEM: `You are the AI Concierge for "Arix Signature", a world-class luxury brand. 
+          Your task is to generate ultra-sophisticated, poetic, and cinematic Christmas greetings. 
+          The tone should be opulent, warm, and highly personalized. 
+          Use metaphors related to emeralds, gold, stars, and timeless elegance.
+          Keep it under 60 words.`,
+        };
+
+        const PARTICLE_COUNT = 4500; 
+        const LIGHT_POINT_COUNT = 600;
+
+        // --- SERVICES ---
+        const generateLuxuryGreeting = async (name, theme) => {
+          try {
+            const ai = new GoogleGenAI({ apiKey: window.process?.env?.API_KEY || '' });
+            const response = await ai.models.generateContent({
+              model: 'gemini-3-flash-preview',
+              contents: `Generate a luxury Christmas greeting for ${name}. The theme is ${theme}.`,
+              config: {
+                systemInstruction: AI_PROMPTS.SYSTEM,
+                temperature: 0.9,
+              },
+            });
+            return response.text || "May your season be draped in the finest gold and deepest emerald hues. Merry Christmas from Arix.";
+          } catch (error) {
+            console.error("Gemini API Error:", error);
+            return "A season of timeless elegance and golden moments awaits you. Happy Holidays.";
+          }
+        };
+
+        // --- COMPONENTS ---
+
+        const ChristmasTree = ({ state, onToggle }) => {
+          const meshRef = useRef(null);
+          const ornamentRef = useRef(null);
+          const lightsRef = useRef(null);
+          const dummy = useMemo(() => new THREE.Object3D(), []);
+
+          const starGeometry = useMemo(() => {
+            const shape = new THREE.Shape();
+            const outerRadius = 0.52;
+            const innerRadius = 0.22;
+            for (let i = 0; i < 10; i++) {
+              const angle = (i * Math.PI) / 5 + Math.PI / 2;
+              const radius = i % 2 === 0 ? outerRadius : innerRadius;
+              const x = Math.cos(angle) * radius;
+              const y = Math.sin(angle) * radius;
+              if (i === 0) shape.moveTo(x, y);
+              else shape.lineTo(x, y);
+            }
+            shape.closePath();
+            return new THREE.ExtrudeGeometry(shape, { 
+              depth: 0.12, 
+              bevelEnabled: true, 
+              bevelThickness: 0.04, 
+              bevelSize: 0.04, 
+              bevelSegments: 3 
+            });
+          }, []);
+
+          const palette = useMemo(() => [
+            new THREE.Color('#004d33'), 
+            new THREE.Color('#008f5d'), 
+            new THREE.Color('#059669'), 
+            new THREE.Color('#10b981'), 
+            new THREE.Color('#D4AF37'), 
+            new THREE.Color('#FFD700'), 
+            new THREE.Color('#064e3b'), 
+            new THREE.Color('#022c22'), 
+          ], []);
+
+          const particleData = useMemo(() => {
+            const data = [];
+            for (let i = 0; i < PARTICLE_COUNT; i++) {
+              const sDist = 7 + Math.random() * 5;
+              const sTheta = Math.random() * Math.PI * 2;
+              const sPhi = Math.acos(2 * Math.random() - 1);
+              const scatterPos = new THREE.Vector3(
+                sDist * Math.sin(sPhi) * Math.cos(sTheta),
+                sDist * Math.sin(sPhi) * Math.sin(sTheta),
+                sDist * Math.cos(sPhi)
+              );
+              const tY = (Math.random() * 6.0) - 2.5; 
+              const normalizedHeight = (tY + 2.5) / 6.0;
+              const radiusAtHeight = (1 - normalizedHeight) * 2.8;
+              const r = (0.3 + 0.7 * Math.sqrt(Math.random())) * radiusAtHeight;
+              const angle = Math.random() * Math.PI * 2;
+              const treePos = new THREE.Vector3(Math.cos(angle) * r, tY, Math.sin(angle) * r);
+              const color = palette[Math.floor(Math.random() * palette.length)].clone();
+              data.push({
+                scatterPos,
+                treePos,
+                currentPos: scatterPos.clone(),
+                speed: 0.02 + Math.random() * 0.04,
+                rotation: new THREE.Euler(Math.random() * Math.PI, Math.random() * Math.PI, Math.random() * Math.PI),
+                scale: 0.06 + Math.random() * 0.12,
+                color: color
+              });
+            }
+            return data;
+          }, [palette]);
+
+          const ornamentData = useMemo(() => {
+            const data = [];
+            for (let i = 0; i < 85; i++) {
+              const sDist = 9 + Math.random() * 3;
+              const sTheta = Math.random() * Math.PI * 2;
+              const scatterPos = new THREE.Vector3(sDist * Math.cos(sTheta), (Math.random() - 0.5) * 10, sDist * Math.sin(sTheta));
+              const tY = (Math.random() * 5.6) - 2.2;
+              const normalizedHeight = (tY + 2.2) / 5.6;
+              const radiusAtHeight = (1 - normalizedHeight) * 2.8;
+              const angle = Math.random() * Math.PI * 2;
+              const r = 0.98 * radiusAtHeight;
+              const treePos = new THREE.Vector3(Math.cos(angle) * r, tY, Math.sin(angle) * r);
+              data.push({
+                scatterPos,
+                treePos,
+                currentPos: scatterPos.clone(),
+                size: 0.1 + Math.random() * 0.12,
+                phase: Math.random() * Math.PI * 2
+              });
+            }
+            return data;
+          }, []);
+
+          const lightPointData = useMemo(() => {
+            const data = [];
+            const whiteColor = new THREE.Color('#FFFFFF');
+            const turns = 10;
+            for (let i = 0; i < LIGHT_POINT_COUNT; i++) {
+              const sDist = 8 + Math.random() * 5;
+              const sTheta = Math.random() * Math.PI * 2;
+              const scatterPos = new THREE.Vector3(sDist * Math.cos(sTheta), (Math.random() - 0.5) * 12, sDist * Math.sin(sTheta));
+              const normalizedHeight = i / (LIGHT_POINT_COUNT - 1);
+              const tY = normalizedHeight * 5.8 - 2.2;
+              const radiusAtHeight = (1 - normalizedHeight) * 2.92;
+              const angle = (normalizedHeight * turns * Math.PI * 2);
+              const treePos = new THREE.Vector3(Math.cos(angle) * radiusAtHeight, tY, Math.sin(angle) * radiusAtHeight);
+              data.push({
+                scatterPos,
+                treePos,
+                currentPos: scatterPos.clone(),
+                scale: 0.03,
+                color: whiteColor.clone(),
+                speed: 0.03 + Math.random() * 0.03
+              });
+            }
+            return data;
+          }, []);
+
+          useFrame((clockState) => {
+            const time = clockState.clock.getElapsedTime();
+            const isAssembled = state === 'TREE_SHAPE';
+
+            if (meshRef.current) {
+              particleData.forEach((p, i) => {
+                const target = isAssembled ? p.treePos : p.scatterPos;
+                p.currentPos.lerp(target, p.speed);
+                dummy.position.copy(p.currentPos);
+                dummy.position.y += Math.sin(time * 0.25 + i) * 0.015;
+                dummy.rotation.set(p.rotation.x + time * 0.05, p.rotation.y + time * 0.04, p.rotation.z);
+                dummy.scale.setScalar(p.scale);
+                dummy.updateMatrix();
+                meshRef.current.setMatrixAt(i, dummy.matrix);
+                meshRef.current.setColorAt(i, p.color);
+              });
+              meshRef.current.instanceMatrix.needsUpdate = true;
+              if (meshRef.current.instanceColor) meshRef.current.instanceColor.needsUpdate = true;
+            }
+
+            if (ornamentRef.current) {
+              ornamentData.forEach((o, i) => {
+                const target = isAssembled ? o.treePos : o.scatterPos;
+                o.currentPos.lerp(target, 0.05);
+                dummy.position.copy(o.currentPos);
+                dummy.position.y += Math.cos(time * 0.5 + o.phase) * 0.02;
+                dummy.scale.setScalar(o.size);
+                dummy.updateMatrix();
+                ornamentRef.current.setMatrixAt(i, dummy.matrix);
+              });
+              ornamentRef.current.instanceMatrix.needsUpdate = true;
+            }
+
+            if (lightsRef.current) {
+              lightPointData.forEach((lp, i) => {
+                const target = isAssembled ? lp.treePos : lp.scatterPos;
+                lp.currentPos.lerp(target, lp.speed);
+                dummy.position.copy(lp.currentPos);
+                const twinkle = 0.6 + Math.sin(time * 6 + i) * 0.4;
+                dummy.scale.setScalar(lp.scale * twinkle);
+                dummy.updateMatrix();
+                lightsRef.current.setMatrixAt(i, dummy.matrix);
+                lightsRef.current.setColorAt(i, lp.color);
+              });
+              lightsRef.current.instanceMatrix.needsUpdate = true;
+              if (lightsRef.current.instanceColor) lightsRef.current.instanceColor.needsUpdate = true;
+            }
+          });
+
+          return React.createElement('group', { onClick: (e) => { e.stopPropagation(); onToggle(); } },
+            React.createElement('instancedMesh', { ref: meshRef, args: [null, null, PARTICLE_COUNT] },
+              React.createElement('boxGeometry', { args: [1, 1, 1] }),
+              React.createElement('meshPhysicalMaterial', { 
+                vertexColors: true,
+                metalness: 0.4,
+                roughness: 0.2,
+                clearcoat: 1.0,
+                clearcoatRoughness: 0.1,
+                reflectivity: 1.0,
+                emissive: "#00ff9d",
+                emissiveIntensity: 0.25
+              })
+            ),
+            React.createElement('instancedMesh', { ref: ornamentRef, args: [null, null, 85] },
+              React.createElement('sphereGeometry', { args: [1, 32, 32] }),
+              React.createElement('meshPhysicalMaterial', { 
+                color: COLORS.highlightGold,
+                metalness: 1.0, 
+                roughness: 0.0, 
+                clearcoat: 1.0,
+                clearcoatRoughness: 0.0,
+                reflectivity: 1.0,
+                emissive: "#443300",
+                emissiveIntensity: 0.1
+              })
+            ),
+            React.createElement('instancedMesh', { ref: lightsRef, args: [null, null, LIGHT_POINT_COUNT] },
+              React.createElement('sphereGeometry', { args: [1, 8, 8] }),
+              React.createElement('meshStandardMaterial', { 
+                color: "#ffffff",
+                vertexColors: true,
+                emissive: "#ffffff",
+                emissiveIntensity: 15,
+                toneMapped: false
+              })
+            ),
+            React.createElement(Float, { speed: 2, rotationIntensity: 0.5, floatIntensity: 0.3 },
+              React.createElement('mesh', { 
+                position: [0, 3.9, 0], 
+                scale: state === 'TREE_SHAPE' ? 1.4 : 0,
+                visible: state === 'TREE_SHAPE',
+                geometry: starGeometry
+              },
+                React.createElement('meshPhysicalMaterial', { 
+                  color: "#ffffff", 
+                  emissive: COLORS.highlightGold, 
+                  emissiveIntensity: 12, 
+                  metalness: 1,
+                  roughness: 0.01,
+                  clearcoat: 1.0
+                }),
+                React.createElement('pointLight', { intensity: 30, distance: 15, color: COLORS.highlightGold })
+              )
+            ),
+            React.createElement(Sparkles, { 
+              count: state === 'TREE_SHAPE' ? 150 : 400, 
+              scale: state === 'TREE_SHAPE' ? 6 : 15, 
+              size: 6, 
+              speed: 0.5, 
+              color: COLORS.highlightGold 
+            })
+          );
+        };
+
+        const Experience = ({ treeState, onToggle }) => {
+          return React.createElement('div', { className: "w-full h-full absolute inset-0 bg-[#000806]" },
+            React.createElement(Canvas, { 
+              shadows: true, 
+              dpr: [1, 2], 
+              gl: { antialias: true, stencil: false, depth: true, toneMapping: THREE.ACESFilmicToneMapping, toneMappingExposure: 1.6 } 
+            },
+              React.createElement(PerspectiveCamera, { makeDefault: true, position: [0, 1.5, 14], fov: 32 }),
+              React.createElement('color', { attach: "background", args: ['#000504'] }),
+              React.createElement('fog', { attach: "fog", args: ['#000504', 12, 30] }),
+              React.createElement('ambientLight', { intensity: 1.05 }),
+              React.createElement('spotLight', { position: [15, 20, 15], angle: 0.2, penumbra: 1, intensity: 21, castShadow: true, 'shadow-mapSize': [2048, 2048] }),
+              React.createElement('pointLight', { position: [-15, 5, -10], intensity: 10.5, color: "#00ff9d" }),
+              React.createElement('pointLight', { position: [15, 10, -10], intensity: 7.8, color: "#059669" }),
+              React.createElement('pointLight', { position: [0, -2, 8], intensity: 6.5, color: COLORS.highlightGold, distance: 25 }),
+              React.createElement('pointLight', { position: [0, 0, 0], intensity: treeState === 'TREE_SHAPE' ? 4 : 0, color: "#ffcc00", distance: 10 }),
+              React.createElement(Suspense, { fallback: null },
+                React.createElement(ChristmasTree, { state: treeState, onToggle: onToggle }),
+                React.createElement(ContactShadows, { resolution: 1024, scale: 20, blur: 4, opacity: 0.6, far: 10, color: "#000000" }),
+                React.createElement(Environment, { preset: "night" })
+              ),
+              React.createElement(OrbitControls, { 
+                enablePan: false, 
+                enableZoom: true, 
+                minDistance: 8, 
+                maxDistance: 22,
+                maxPolarAngle: Math.PI / 1.7,
+                autoRotate: treeState === 'SCATTERED',
+                autoRotateSpeed: 0.25
+              }),
+              React.createElement(EffectComposer, { disableNormalPass: true },
+                React.createElement(Bloom, { luminanceThreshold: 1.0, mipmapBlur: true, intensity: 1.6, radius: 0.35 }),
+                React.createElement(Noise, { opacity: 0.02 }),
+                React.createElement(Vignette, { eskil: false, offset: 0.2, darkness: 1.2 })
+              )
+            )
+          );
+        };
+
+        const UIOverlay = ({ treeState, setTreeState }) => {
+          const toggleAssembly = () => {
+            setTreeState(treeState === 'SCATTERED' ? 'TREE_SHAPE' : 'SCATTERED');
+          };
+          return React.createElement('div', { className: "pointer-events-none fixed inset-0 flex flex-col justify-between p-8 md:p-12 z-10 overflow-hidden" },
+            React.createElement('header', { className: "flex justify-between items-start pointer-events-auto" },
+              React.createElement('div', { className: "flex flex-col" },
+                React.createElement('h1', { className: "text-4xl md:text-6xl font-luxury text-[#D4AF37] tracking-widest uppercase" }, "Arix"),
+                React.createElement('p', { className: "text-[#065F46] font-medium tracking-[0.3em] uppercase text-xs md:text-sm mt-1" }, "Signature Interactive")
+              ),
+              React.createElement('div', { className: "flex flex-col items-end" },
+                React.createElement('button', { onClick: toggleAssembly, className: "group flex flex-col items-end pointer-events-auto" },
+                  React.createElement('div', { className: "text-[#D4AF37] font-luxury text-sm tracking-widest uppercase mb-1 group-hover:text-[#FFD700] transition-colors" }, 
+                    treeState === 'SCATTERED' ? 'Initiate Assembly' : 'Release Essence'
+                  ),
+                  React.createElement('div', { className: "h-[1px] w-24 bg-gradient-to-l from-[#D4AF37] to-transparent" }),
+                  React.createElement('div', { className: "text-[#D4AF37]/40 text-[9px] uppercase tracking-widest mt-1 group-hover:text-[#D4AF37]/70" }, 
+                    treeState === 'SCATTERED' ? 'Particles in Entropy' : 'Signature Form Active'
+                  )
+                ),
+                React.createElement('div', { className: "mt-4 text-[#D4AF37]/60 text-right font-light italic text-[10px] uppercase tracking-widest" }, "Click the tree to interact")
+              )
+            ),
+            React.createElement('div', { className: "fixed top-0 left-0 w-24 h-24 border-t-2 border-l-2 border-[#D4AF37]/20 pointer-events-none m-4" }),
+            React.createElement('div', { className: "fixed bottom-0 right-0 w-24 h-24 border-b-2 border-r-2 border-[#D4AF37]/20 pointer-events-none m-4" })
+          );
+        };
+
+        const App = () => {
+          const [treeState, setTreeState] = useState('SCATTERED');
+          const handleToggle = useCallback(() => {
+            setTreeState((prev) => (prev === 'SCATTERED' ? 'TREE_SHAPE' : 'SCATTERED'));
+          }, []);
+          return React.createElement('main', { className: "relative w-screen h-screen overflow-hidden bg-[#021a12]" },
+            React.createElement(Experience, { treeState: treeState, onToggle: handleToggle }),
+            React.createElement(UIOverlay, { treeState: treeState, setTreeState: setTreeState }),
+            React.createElement('div', { className: "fixed bottom-4 left-1/2 -translate-x-1/2 text-[#D4AF37]/30 text-[8px] uppercase tracking-[0.5em] pointer-events-none z-50 text-center" }, 
+              "The Arix Digital Experience • All Rights Reserved", React.createElement('br'), "Click the Tree to Reveal the Signature"
+            ),
+            React.createElement('div', { className: "fixed inset-0 pointer-events-none bg-[radial-gradient(circle_at_center,transparent_0%,rgba(2,26,18,0.4)_100%)] z-5" })
+          );
+        };
+
+        // --- RENDER ---
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(React.createElement(React.StrictMode, null, React.createElement(App)));
+    </script>
+<script type="module" src="/index.tsx"></script>
+</body>
+</html>
